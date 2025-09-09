@@ -1,0 +1,24 @@
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aistk"
+version = "0.1.0"
+description = "AIS Toolkit for high-resolution spatio-temporal datasets"
+authors = [{name="Irmina Durlik"}]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["polars>=1.5.0", "numpy", "pyarrow"]
+
+[project.optional-dependencies]
+viz = ["folium"]
+cli = ["typer"]
+
+[project.scripts]
+aistk = "aistk.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["aistk"]
+include = ["aistk*"]
