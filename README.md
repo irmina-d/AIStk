@@ -1,5 +1,5 @@
 
-# aistk — AIS Toolkit for Spatio‑Temporal Datasets
+# AIStk — AIS Toolkit for Spatio‑Temporal Datasets
 
 Minimal, fast toolkit for building high‑resolution AIS datasets from decoded CSV files.
 
@@ -10,9 +10,9 @@ Minimal, fast toolkit for building high‑resolution AIS datasets from decoded C
 - Event detection (sharp turns, stops, AIS gaps, draft changes)
 - Map plotting (Folium) and Parquet export
 
-## Install (editable)
+## Install
 ```bash
-pip install -e .[viz]
+pip install aistk
 ```
 
 ## Quickstart
@@ -44,4 +44,4 @@ aistk/
 ```
 
 ## License
-MIT © 2025
+MIT © 2025 by Irmina Durlik
