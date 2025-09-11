@@ -1,0 +1,23 @@
+# Requirements for AIS Toolkit
+# Python >= 3.9
+
+# --- Core runtime ---
+polars>=0.20
+numpy>=1.24
+typer>=0.12
+
+# --- Visualization (optional) ---
+folium>=0.14
+
+# --- Spatial utilities (optional) ---
+shapely>=2.0
+h3>=3.7
+
+# --- Backends for large-scale processing (optional) ---
+# Uncomment if you plan to use these backends.
+dask[dataframe]>=2024.1.0
+pyarrow>=12.0     # Parquet IO for Dask; Polars can read/write Parquet without PyArrow
+pyspark>=3.5
+
+# --- Testing (optional) ---
+pytest>=7.4
