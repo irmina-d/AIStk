@@ -1,35 +1,56 @@
 # cli.py — Command Line Interface
 
 ## Purpose
-Wraps common workflows (ingest → clean → stats/events → export) into CLI commands.
+Provide a unified command-line interface to interact with the AIS Toolkit, covering ingestion, filtering, statistics, event detection, streaming simulation, and export. Designed for both quick exploration and batch workflows.
 
 ## Responsibilities
-- Batch ingestion and cleaning with schema alignment.
-- Running statistics and event detection over folders.
-- Exporting maps/reports.
+- Discover and load AIS data from CSV/Parquet with flexible glob patterns.  
+- Apply filters (time ranges, MMSI, column selection).  
+- Run statistics (distance, tortuosity, speed, turn index) via multiple backends (Polars, Polars streaming, Dask, Spark).  
+- Detect navigational events (sharp turns, stops, draught changes, temporal gaps).  
+- Export results to Parquet/CSV or interactive HTML maps.  
+- Simulate online streaming from CSV files and emit events incrementally.  
 
 ## Interactions with Other Modules
-- io.py
-- schema.py
-- core.py
-- stats.py
-- events.py
-- viz.py
+- `core.py` → dataset abstraction (lazy building, filtering, materialization).  
+- `stats.py` / `stats_streaming.py` → trajectory metrics.  
+- `events.py` / `streaming/events_online.py` → batch and online event detection.  
+- `viz.py` → map rendering with Folium.  
+- `backends/dask_backend.py` and `backends/spark_backend.py` → large-scale execution engines.  
 
-## Usage Example
+## Usage Examples
 ```bash
-aisdataset --help
-aisdataset ingest --src data/ais --out lake/raw
-aisdataset clean  --in lake/raw --out lake/clean
-aisdataset stats  --in lake/clean --by mmsi --out out/metrics
+# General help
+aistk --help
+
+# Scan AIS files, restrict to January 2024, export Parquet
+aistk scan data/ais --from 2024-01-01 --to 2024-02-01 \
+  --mmsi 244660000,244770000 --to-parquet out/ais.parquet
+
+# Compute per-MMSI stats with Polars streaming
+aistk stats data/ais --engine polars-stream --out stats.parquet
+
+# Detect navigational events
+aistk events data/ais --mmsi 244660000 --out events.csv
+
+# Simulate online streaming from a CSV (emit events as JSON lines)
+aistk stream-csv data/ais/2024.csv --chunk-size 5000
 ```
 
 ## Public API (Outline)
-**Functions**
-- `scan(root, pattern=..., date_from=..., date_to=..., mmsi=..., cols=..., to_parquet=..., html=...)`
-**Top-level variables:** `app`
+**Typer Commands**  
+- `scan(...)` → batch ingest + filtering + export (Parquet/HTML).  
+- `stats(...)` → run statistics with selectable backend.  
+- `events(...)` → detect events in batch datasets.  
+- `stream_csv(...)` → simulate online stream from CSV, detect events incrementally.  
+
+**Top-level variables**  
+- `app` : `typer.Typer` instance.  
 
 ## Notes & Design Considerations
-- Assumes canonical AIS columns after `schema.validate_columns()`.
-- Keep I/O and analytics separated for testability.
-- Prefer vectorized operations; avoid per-row Python loops where possible.
+- Uses **Typer** for CLI ergonomics (structured help, autocompletion).  
+- All heavy imports (Polars, Dask, Spark) are done lazily inside commands.  
+- Backend abstraction allows the same API across Polars/Dask/Spark.  
+- Event streaming (`stream-csv`) reuses the same logic as batch detection, maintaining per-MMSI state online.  
+- Designed to keep analytics and I/O separated for testability.  
+- Prefer vectorized operations in Polars/Spark/Dask; Python loops only in online streaming (stateful per record).  
