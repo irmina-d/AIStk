@@ -1,0 +1,26 @@
+site_name: AISDATASET Docs
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.sections
+    - content.code.copy
+nav:
+  - Home: index.md
+  - Modules:
+      - Core: modules/core.md
+      - Schema: modules/schema.md
+      - IO: modules/io.md
+      - Stats: modules/stats.md
+      - Events: modules/events.md
+      - Spatial: modules/spatial.md
+      - Visualization: modules/viz.md
+      - CLI: modules/cli.md
+      - Utils: modules/utils.md
+      - __init__: modules/__init__.md
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
