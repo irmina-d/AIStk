@@ -1,5 +1,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)
+[![Docs](https://img.shields.io/badge/docs-online-blue.svg)](https://irmina-d.github.io/AIStk/)
 # AIStk — AIS Toolkit for Spatio‑Temporal Datasets
 
 Minimal, fast toolkit for building high‑resolution AIS datasets from decoded CSV files.
