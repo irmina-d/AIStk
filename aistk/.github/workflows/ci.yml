@@ -1,4 +1,3 @@
-
 name: CI
 
 on:
@@ -10,7 +9,6 @@ on:
 
 jobs:
   tests:
-    name: Python ${{ matrix.python-version }} on ${{ runner.os }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -18,34 +16,27 @@ jobs:
         python-version: ["3.9", "3.10", "3.11", "3.12"]
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
 
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Install dependencies (light)
+      - name: Install deps (full)
         run: |
           python -m pip install --upgrade pip
-          # Core deps only; optional heavy deps (dask/pyspark) are intentionally skipped.
-          pip install polars numpy typer pytest
-          # Optional libs to enable more tests (will be skipped if not present)
+          pip install -e . pytest polars numpy typer
           pip install folium shapely h3 || true
-          # Install package in editable mode if pyproject exists; otherwise rely on PYTHONPATH
-          if [ -f pyproject.toml ]; then pip install -e .; fi
+          pip install "dask[complete]" pyspark
 
-      - name: Run tests
+      - name: Run tests (pełny)
         env:
           PYTHONPATH: .
+          MPLBACKEND: Agg
+          ONLINE_TESTS: ${{ secrets.ONLINE_TESTS }}
         run: |
-          pytest -q
+          pytest tests -q
