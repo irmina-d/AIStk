@@ -1,6 +1,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)
 [![Docs](https://img.shields.io/badge/docs-online-blue.svg)](https://irmina-d.github.io/AIStk/)
+![Visitors](https://komarev.com/ghpvc/?username=irmina-d&color=green&style=plastic)
 
 # AIStk — AIS Toolkit for Spatio‑Temporal Datasets
 
