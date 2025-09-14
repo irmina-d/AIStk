@@ -1,4 +1,4 @@
-# AISDATASET — AIS Data Toolkit
+# AIStk — AIS Data Toolkit
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](../LICENSE)  
 ![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)  
@@ -11,7 +11,7 @@ A modular Python library for working with **AIS (Automatic Identification System
 ## Installation
 
 ```bash
-pip install aisdataset
+pip install aistk
 ```
 
 ---
@@ -19,8 +19,8 @@ pip install aisdataset
 ## Quick Start
 
 ```python
-from aisdataset.core import AISDataset
-from aisdataset.stats import compute_stats_df
+from aistk.core import AISDataset
+from aistk.stats import compute_stats_df
 
 ds = AISDataset("data/ais/2024")
 df = ds.collect()
