@@ -44,8 +44,7 @@ print(metrics.head())
 - [cli.py](modules/cli.md) — Command Line Interface  
 - [utils.py](modules/utils.md) — Utilities & Helpers  
 - [backends/dask_backend.py](modules/dask_backend.md) — Dask Backend (out-of-core)  
-- [backends/spark_backend.py](modules/spark_backend.md) — Spark Backend (cluster/distributed)  
-- [__init__.py](modules/__init__.md) — Package Export Surface  
+- [backends/spark_backend.py](modules/spark_backend.md) — Spark Backend (cluster/distributed)
 
 ---
 
