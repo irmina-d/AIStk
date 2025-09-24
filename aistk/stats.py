@@ -119,7 +119,13 @@ def compute_stats_df(df: pl.DataFrame, level: AggLevel = "mmsi") -> pl.DataFrame
         # Polars GroupBy is iterable: (key, subframe)
         for _key, pdf in df.group_by("MMSI", maintain_order=True):
             stats = _per(pdf)
-            stats["MMSI"] = int(pdf["MMSI"][0])
+            first_mmsi = pdf["MMSI"][0]
+            if first_mmsi is None or (
+                isinstance(first_mmsi, (float, np.floating)) and np.isnan(first_mmsi)
+            ):
+                stats["MMSI"] = None
+            else:
+                stats["MMSI"] = int(first_mmsi)
             rows.append(stats)
         return pl.DataFrame(rows)
 
