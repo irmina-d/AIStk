@@ -14,7 +14,7 @@ def main():
 
     offset = 0
     while True:
-        df = lf.slice(offset, chunk).collect(streaming=True)
+        df = lf.slice(offset, chunk).collect(engine="streaming")
         if df.height == 0:
             break
         cols = [c for c in ["MMSI","ts","LAT","LON","COG","SOG","Draft"] if c in df.columns]

@@ -114,7 +114,7 @@ def _per_mmsi(pdf: pd.DataFrame) -> pd.DataFrame:
 
     turn = np.nan
     if "COG" in pdf.columns:
-        cog = pdf["COG"].fillna(method="ffill").to_numpy()
+        cog = pdf["COG"].ffill().to_numpy()
         cog = np.unwrap(np.radians(cog))
         turn = float(np.sum(np.degrees(np.abs(np.diff(cog)))))
 
@@ -209,7 +209,8 @@ def compute_stats_dask(
     )
 
     # Apply per MMSI using Pandas function; Dask will handle partitioning/shuffle.
-    grouped = ddf.groupby("MMSI", dropna=False).apply(_per_mmsi, meta=meta)
+    cols = ddf.columns.tolist()
+    grouped = ddf.groupby("MMSI", dropna=False)[cols].apply(_per_mmsi, meta=meta)
 
     # Compute the final pandas DataFrame
     return grouped.compute()
