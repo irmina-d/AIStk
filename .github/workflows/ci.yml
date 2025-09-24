@@ -25,6 +25,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install ".[viz,cli]"
           pip install "dask[dataframe]" pyarrow shapely h3
+          pip install pytest
 
       - name: Run tests
         run: pytest
