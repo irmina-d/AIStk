@@ -48,9 +48,11 @@ def _haversine_km_expr(lat1: pl.Expr, lon1: pl.Expr, lat2: pl.Expr, lon2: pl.Exp
     rlat2, rlon2 = _rad(lat2), _rad(lon2)
     dlat = rlat2 - rlat1
     dlon = rlon2 - rlon1
-    a = (pl.sin(dlat / 2) ** 2) + pl.cos(rlat1) * pl.cos(rlat2) * (pl.sin(dlon / 2) ** 2)
+    sin_dlat_sq = (dlat / 2).sin().pow(2)
+    sin_dlon_sq = (dlon / 2).sin().pow(2)
+    a = sin_dlat_sq + rlat1.cos() * rlat2.cos() * sin_dlon_sq
     a = pl.when(a < 0).then(0).when(a > 1).then(1).otherwise(a)
-    return 2 * R * pl.arcsin(pl.sqrt(a))
+    return a.sqrt().arcsin() * (2 * R)
 
 
 def _angle_diff_deg_wrap(cur: pl.Expr, prev: pl.Expr) -> pl.Expr:
@@ -76,8 +78,13 @@ def _angle_diff_deg_wrap(cur: pl.Expr, prev: pl.Expr) -> pl.Expr:
     """
     cur_r = _rad(cur)
     prev_r = _rad(prev)
-    d = pl.atan2(pl.sin(cur_r - prev_r), pl.cos(cur_r - prev_r))
-    return pl.abs(pl.degrees(d))
+    delta = cur_r - prev_r
+    sin_delta = delta.sin().fill_null(0.0)
+    cos_delta = delta.cos().fill_null(1.0)
+    d = pl.struct([sin_delta.alias("sin"), cos_delta.alias("cos")]).map_elements(
+        lambda row: np.arctan2(row["sin"], row["cos"]), return_dtype=pl.Float64
+    )
+    return d.degrees().abs()
 
 
 def compute_stats_lazy(lf: pl.LazyFrame, level: str = "mmsi") -> pl.LazyFrame:
@@ -160,19 +167,22 @@ def compute_stats_lazy(lf: pl.LazyFrame, level: str = "mmsi") -> pl.LazyFrame:
 
     result = agg.agg(
         [
-            pl.count().alias("points"),
+            pl.len().alias("points"),
             pl.sum("seg_km").alias("distance_km"),
             straight_km,
-            (
-                pl.col("distance_km")
-                / pl.when(pl.col("straight_km") <= 1e-6)
-                .then(1e-6)
-                .otherwise(pl.col("straight_km"))
-            ).alias("tortuosity"),
             pl.sum("turn_deg").alias("turn_index_deg"),
             pl.mean("SOG").alias("avg_sog"),
             pl.max("SOG").alias("max_sog"),
         ]
+    )
+
+    result = result.with_columns(
+        (
+            pl.col("distance_km")
+            / pl.when(pl.col("straight_km") <= 1e-6)
+            .then(1e-6)
+            .otherwise(pl.col("straight_km"))
+        ).alias("tortuosity")
     )
 
     # Rounding for consistency
