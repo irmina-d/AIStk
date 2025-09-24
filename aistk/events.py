@@ -87,19 +87,25 @@ def detect_events_df(
     if {"SOG", "ts"}.issubset(df.columns):
         sog = df["SOG"].fill_null(strategy="forward").to_numpy()
         ts = df["ts"].to_numpy()
+        if not np.issubdtype(ts.dtype, np.datetime64):
+            ts = ts.astype("datetime64[ns]")
+        else:
+            ts = ts.astype("datetime64[ns]", copy=False)
         mask = sog < stop_sog
         if mask.any():
             idx = np.where(mask)[0]
             splits = np.split(idx, np.where(np.diff(idx) != 1)[0] + 1)
             for g in splits:
                 if g.size > 1:
-                    dt_ms = (ts[g[-1]].item() - ts[g[0]].item()) / 1e6  # ns→ms
+                    end_idx = int(g[-1])
+                    start_idx = int(g[0])
+                    dt_ms = (ts[end_idx] - ts[start_idx]) / np.timedelta64(1, "ms")
                     if dt_ms >= stop_min * 60 * 1000:
                         events.append(
                             {
                                 "type": "stop",
-                                "ts": df["ts"][g[-1]],
-                                "duration_min": round(dt_ms / 60000, 2),
+                                "ts": df["ts"][end_idx],
+                                "duration_min": round(float(dt_ms) / 60000, 2),
                             }
                         )
 
@@ -119,7 +125,7 @@ def detect_events_df(
 
     # gaps
     if "ts" in df.columns:
-        gaps = df.sort("ts")["ts"].diff().dt.seconds()
+        gaps = df.sort("ts")["ts"].diff().dt.total_seconds()
         for i, sec in enumerate(gaps):
             if sec is not None and sec > 600:
                 events.append({"type": "gap", "ts": df["ts"][i], "gap_s": int(sec)})
