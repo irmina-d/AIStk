@@ -32,3 +32,18 @@ def test_compute_stats_handles_all_null_sog():
     assert stats.height == 1
     assert stats["max_sog"][0] is None
     assert stats["avg_sog"][0] is None
+
+
+def test_compute_stats_df_handles_null_mmsi():
+    df = pl.DataFrame(
+        {
+            "MMSI": pl.Series("MMSI", [None, 999_999_999], dtype=pl.Int64),
+            "LAT": [30.0, 30.001],
+            "LON": [-40.0, -39.999],
+        }
+    )
+
+    stats = compute_stats_df(df, level="mmsi")
+
+    assert stats.height == 2
+    assert stats["MMSI"][0] is None
