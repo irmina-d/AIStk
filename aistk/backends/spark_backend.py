@@ -5,12 +5,13 @@ from typing import Literal, Optional
 from pyspark.sql import DataFrame, Window
 from pyspark.sql import functions as F
 from pyspark.sql.column import Column
+from pyspark.sql.types import DoubleType
 
 AggLevel = Literal["mmsi"]
 EARTH_RADIUS_KM: float = 6371.0088
 
 
-@F.udf("double")
+@F.udf(DoubleType())
 def haversine_km_udf(
     lat1: Optional[float],
     lon1: Optional[float],

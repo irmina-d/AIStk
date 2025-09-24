@@ -1,3 +1,5 @@
+import pytest
+
 from aistk.streaming.events_online import process_stream
 
 
@@ -11,3 +13,7 @@ def test_process_stream_emits_events():
     events = list(process_stream(recs, stop_min=10))
     types = {e["type"] for e in events}
     assert {"sharp_turn", "gap", "draft_change"}.issubset(types)
+    assert "stop" in types
+
+    stop_event = next(e for e in events if e["type"] == "stop")
+    assert stop_event["duration_min"] == pytest.approx(15.92, rel=1e-3)

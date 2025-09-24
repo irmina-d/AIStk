@@ -48,9 +48,11 @@ def _haversine_km_expr(lat1: pl.Expr, lon1: pl.Expr, lat2: pl.Expr, lon2: pl.Exp
     rlat2, rlon2 = _rad(lat2), _rad(lon2)
     dlat = rlat2 - rlat1
     dlon = rlon2 - rlon1
-    a = (pl.sin(dlat / 2) ** 2) + pl.cos(rlat1) * pl.cos(rlat2) * (pl.sin(dlon / 2) ** 2)
+    sin_dlat_sq = (dlat / 2).sin().pow(2)
+    sin_dlon_sq = (dlon / 2).sin().pow(2)
+    a = sin_dlat_sq + rlat1.cos() * rlat2.cos() * sin_dlon_sq
     a = pl.when(a < 0).then(0).when(a > 1).then(1).otherwise(a)
-    return 2 * R * pl.arcsin(pl.sqrt(a))
+    return a.sqrt().arcsin() * (2 * R)
 
 
 def _angle_diff_deg_wrap(cur: pl.Expr, prev: pl.Expr) -> pl.Expr:
@@ -76,8 +78,13 @@ def _angle_diff_deg_wrap(cur: pl.Expr, prev: pl.Expr) -> pl.Expr:
     """
     cur_r = _rad(cur)
     prev_r = _rad(prev)
-    d = pl.atan2(pl.sin(cur_r - prev_r), pl.cos(cur_r - prev_r))
-    return pl.abs(pl.degrees(d))
+    delta = cur_r - prev_r
+    sin_delta = delta.sin().fill_null(0.0)
+    cos_delta = delta.cos().fill_null(1.0)
+    d = pl.struct([sin_delta.alias("sin"), cos_delta.alias("cos")]).map_elements(
+        lambda row: np.arctan2(row["sin"], row["cos"]), return_dtype=pl.Float64
+    )
+    return d.degrees().abs()
 
 
 def compute_stats_lazy(lf: pl.LazyFrame, level: str = "mmsi") -> pl.LazyFrame:
@@ -86,7 +93,7 @@ def compute_stats_lazy(lf: pl.LazyFrame, level: str = "mmsi") -> pl.LazyFrame:
 
     This avoids materialization into NumPy arrays and instead leverages Polars
     expressions, making it suitable for very large AIS datasets processed with
-    ``collect(streaming=True)``.
+    ``collect(engine="streaming")``.
 
     Parameters
     ----------
@@ -117,7 +124,7 @@ def compute_stats_lazy(lf: pl.LazyFrame, level: str = "mmsi") -> pl.LazyFrame:
 
     Notes
     -----
-    - Use ``.collect(streaming=True)`` on the returned LazyFrame for large datasets.
+    - Use ``.collect(engine=\"streaming\")`` on the returned LazyFrame for large datasets.
     - Distances are computed with haversine approximation on a spherical Earth.
     - Turn index is a simple cumulative heading change proxy.
 
@@ -126,17 +133,19 @@ def compute_stats_lazy(lf: pl.LazyFrame, level: str = "mmsi") -> pl.LazyFrame:
     >>> import polars as pl
     >>> from aistk.stats_streaming import compute_stats_lazy
     >>> lf = pl.LazyFrame({"MMSI":[1,1], "LAT":[54.3,54.31], "LON":[18.6,18.61], "SOG":[10,12], "COG":[45,50]})
-    >>> out = compute_stats_lazy(lf).collect(streaming=True)
+    >>> out = compute_stats_lazy(lf).collect(engine="streaming")
     >>> out.columns
     ['MMSI','points','distance_km','straight_km','tortuosity','turn_index_deg','avg_sog','max_sog']
     """
-    has_mmsi = "MMSI" in lf.columns
+    schema_names = set(lf.collect_schema().names())
+    has_mmsi = "MMSI" in schema_names
+    has_ts = "ts" in schema_names
 
     # Sort for correct lag/lead
     lf = (
         lf.sort(["MMSI", "ts"])
-        if has_mmsi and "ts" in lf.columns
-        else (lf.sort("ts") if "ts" in lf.columns else lf)
+        if has_mmsi and has_ts
+        else (lf.sort("ts") if has_ts else lf)
     )
 
     # Per-row segment distance to next point
@@ -160,19 +169,22 @@ def compute_stats_lazy(lf: pl.LazyFrame, level: str = "mmsi") -> pl.LazyFrame:
 
     result = agg.agg(
         [
-            pl.count().alias("points"),
+            pl.len().alias("points"),
             pl.sum("seg_km").alias("distance_km"),
             straight_km,
-            (
-                pl.col("distance_km")
-                / pl.when(pl.col("straight_km") <= 1e-6)
-                .then(1e-6)
-                .otherwise(pl.col("straight_km"))
-            ).alias("tortuosity"),
             pl.sum("turn_deg").alias("turn_index_deg"),
             pl.mean("SOG").alias("avg_sog"),
             pl.max("SOG").alias("max_sog"),
         ]
+    )
+
+    result = result.with_columns(
+        (
+            pl.col("distance_km")
+            / pl.when(pl.col("straight_km") <= 1e-6)
+            .then(1e-6)
+            .otherwise(pl.col("straight_km"))
+        ).alias("tortuosity")
     )
 
     # Rounding for consistency

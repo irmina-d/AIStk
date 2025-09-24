@@ -82,7 +82,11 @@ def _per_mmsi(pdf: pd.DataFrame) -> pd.DataFrame:
     if "ts" in pdf.columns:
         pdf = pdf.sort_values("ts", kind="mergesort")
 
-    mmsi_val = int(pdf["MMSI"].iloc[0]) if "MMSI" in pdf.columns and len(pdf["MMSI"]) else np.nan
+    mmsi_val = np.nan
+    if "MMSI" in pdf.columns and len(pdf["MMSI"]):
+        first_mmsi = pdf["MMSI"].iloc[0]
+        if not pd.isna(first_mmsi):
+            mmsi_val = int(first_mmsi)
     points = int(len(pdf))
 
     if "LAT" not in pdf.columns or "LON" not in pdf.columns or points < 2:
@@ -110,7 +114,7 @@ def _per_mmsi(pdf: pd.DataFrame) -> pd.DataFrame:
 
     turn = np.nan
     if "COG" in pdf.columns:
-        cog = pdf["COG"].fillna(method="ffill").to_numpy()
+        cog = pdf["COG"].ffill().to_numpy()
         cog = np.unwrap(np.radians(cog))
         turn = float(np.sum(np.degrees(np.abs(np.diff(cog)))))
 
@@ -205,7 +209,8 @@ def compute_stats_dask(
     )
 
     # Apply per MMSI using Pandas function; Dask will handle partitioning/shuffle.
-    grouped = ddf.groupby("MMSI", dropna=False).apply(_per_mmsi, meta=meta)
+    cols = ddf.columns.tolist()
+    grouped = ddf.groupby("MMSI", dropna=False)[cols].apply(_per_mmsi, meta=meta)
 
     # Compute the final pandas DataFrame
     return grouped.compute()
