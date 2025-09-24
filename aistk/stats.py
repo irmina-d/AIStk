@@ -65,6 +65,16 @@ def compute_stats_df(df: pl.DataFrame, level: AggLevel = "mmsi") -> pl.DataFrame
     def _per(pdf: pl.DataFrame) -> Dict[str, Union[int, float, None]]:
         lat: NDArray[np.float64] = pdf["LAT"].to_numpy()
         lon: NDArray[np.float64] = pdf["LON"].to_numpy()
+
+        max_sog: Optional[float] = None
+        avg_sog: Optional[float] = None
+        if "SOG" in pdf.columns:
+            sog_col = pdf["SOG"]
+            max_val = sog_col.max()
+            mean_val = sog_col.mean()
+            max_sog = float(max_val) if max_val is not None else None
+            avg_sog = float(mean_val) if mean_val is not None else None
+
         if lat.size < 2:
             return {
                 "points": int(lat.size),
@@ -72,8 +82,8 @@ def compute_stats_df(df: pl.DataFrame, level: AggLevel = "mmsi") -> pl.DataFrame
                 "straight_km": 0.0,
                 "tortuosity": 1.0,
                 "turn_index_deg": None,
-                "max_sog": float(pdf["SOG"].max()) if "SOG" in pdf.columns else None,
-                "avg_sog": float(pdf["SOG"].mean()) if "SOG" in pdf.columns else None,
+                "max_sog": max_sog,
+                "avg_sog": avg_sog,
             }
 
         # Segment distances and straight-line distance
@@ -96,8 +106,8 @@ def compute_stats_df(df: pl.DataFrame, level: AggLevel = "mmsi") -> pl.DataFrame
             "straight_km": round(straight_km, 3),
             "tortuosity": round(tort, 3),
             "turn_index_deg": round(turn_index, 1) if turn_index is not None else None,
-            "max_sog": float(pdf["SOG"].max()) if "SOG" in pdf.columns else None,
-            "avg_sog": float(pdf["SOG"].mean()) if "SOG" in pdf.columns else None,
+            "max_sog": max_sog,
+            "avg_sog": avg_sog,
         }
 
     # Sort if timestamp is present; keep per-vessel order if MMSI exists
