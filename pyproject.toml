@@ -3,14 +3,48 @@
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
+
 [project]
 name = "aistk"
 version = "0.1.0"
 description = "AIS Toolkit for high-resolution spatio-temporal datasets"
-authors = [{name="Irmina Durlik"}]
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = ["polars>=1.5.0", "numpy", "pyarrow"]
+license = { file = "LICENSE" }
+authors = [
+    { name = "Irmina Durlik" },
+]
+keywords = [
+    "ais",
+    "maritime",
+    "tracking",
+    "polars",
+    "spatio-temporal",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+dependencies = [
+    "polars>=1.5.0",
+    "numpy",
+    "pyarrow",
+]
+
+[project.urls]
+Homepage = "https://github.com/irmina-d/AIStk-demo"
+Documentation = "https://irmina-d.github.io/AIStk/"
+Repository = "https://github.com/irmina-d/AIStk-demo"
+Issues = "https://github.com/irmina-d/AIStk-demo/issues"
 
 [project.optional-dependencies]
 viz = ["folium"]
@@ -20,5 +54,10 @@ cli = ["typer"]
 aistk = "aistk.cli:app"
 
 [tool.setuptools.packages.find]
-where = ["aistk"]
+where = ["."]
 include = ["aistk*"]
+exclude = ["tests*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
