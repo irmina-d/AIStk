@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aistk"
-version = "0.1.0"
+version = "1.0.0"
 description = "AIS Toolkit for high-resolution spatio-temporal datasets"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -41,10 +41,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/irmina-d/AIStk-demo"
+Homepage = "https://github.com/irmina-d/AIStk"
 Documentation = "https://irmina-d.github.io/AIStk/"
-Repository = "https://github.com/irmina-d/AIStk-demo"
-Issues = "https://github.com/irmina-d/AIStk-demo/issues"
+Repository = "https://github.com/irmina-d/AIStk"
+Issues = "https://github.com/irmina-d/AIStk/issues"
 
 [project.optional-dependencies]
 viz = ["folium"]
