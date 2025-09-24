@@ -93,7 +93,7 @@ def compute_stats_lazy(lf: pl.LazyFrame, level: str = "mmsi") -> pl.LazyFrame:
 
     This avoids materialization into NumPy arrays and instead leverages Polars
     expressions, making it suitable for very large AIS datasets processed with
-    ``collect(streaming=True)``.
+    ``collect(engine="streaming")``.
 
     Parameters
     ----------
@@ -124,7 +124,7 @@ def compute_stats_lazy(lf: pl.LazyFrame, level: str = "mmsi") -> pl.LazyFrame:
 
     Notes
     -----
-    - Use ``.collect(streaming=True)`` on the returned LazyFrame for large datasets.
+    - Use ``.collect(engine=\"streaming\")`` on the returned LazyFrame for large datasets.
     - Distances are computed with haversine approximation on a spherical Earth.
     - Turn index is a simple cumulative heading change proxy.
 
@@ -133,17 +133,19 @@ def compute_stats_lazy(lf: pl.LazyFrame, level: str = "mmsi") -> pl.LazyFrame:
     >>> import polars as pl
     >>> from aistk.stats_streaming import compute_stats_lazy
     >>> lf = pl.LazyFrame({"MMSI":[1,1], "LAT":[54.3,54.31], "LON":[18.6,18.61], "SOG":[10,12], "COG":[45,50]})
-    >>> out = compute_stats_lazy(lf).collect(streaming=True)
+    >>> out = compute_stats_lazy(lf).collect(engine="streaming")
     >>> out.columns
     ['MMSI','points','distance_km','straight_km','tortuosity','turn_index_deg','avg_sog','max_sog']
     """
-    has_mmsi = "MMSI" in lf.columns
+    schema_names = set(lf.collect_schema().names())
+    has_mmsi = "MMSI" in schema_names
+    has_ts = "ts" in schema_names
 
     # Sort for correct lag/lead
     lf = (
         lf.sort(["MMSI", "ts"])
-        if has_mmsi and "ts" in lf.columns
-        else (lf.sort("ts") if "ts" in lf.columns else lf)
+        if has_mmsi and has_ts
+        else (lf.sort("ts") if has_ts else lf)
     )
 
     # Per-row segment distance to next point

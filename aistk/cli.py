@@ -84,11 +84,11 @@ def scan(
             # optional outputs
             if to_parquet:
                 # If Polars version supports sink_parquet, prefer it; otherwise collect streaming.
-                lf.collect(streaming=True).write_parquet(to_parquet)
+                lf.collect(engine="streaming").write_parquet(to_parquet)
                 typer.echo(f"Written Parquet to {to_parquet} (streaming collect)")
 
             if html:
-                df = lf.collect(streaming=True)
+                df = lf.collect(engine="streaming")
                 if mmsi_list and "MMSI" in df.columns:
                     df = df.filter(pl.col("MMSI").is_in(mmsi_list))
                 from .viz import plot_track_html
@@ -96,7 +96,7 @@ def scan(
                 typer.echo(f"Wrote map to {html}")
 
             # Show summary stats to console
-            stats_df = compute_stats_lazy(lf, level="mmsi").collect(streaming=True)
+            stats_df = compute_stats_lazy(lf, level="mmsi").collect(engine="streaming")
             typer.echo(stats_df.head().to_string())
             return
 
@@ -226,7 +226,7 @@ def stats(
             ds = ds.filter(mmsi=mmsi_list)
 
         lf = ds._build()
-        out_df = compute_stats_lazy(lf, level=level).collect(streaming=True)
+        out_df = compute_stats_lazy(lf, level=level).collect(engine="streaming")
         if out:
             if out.endswith(".csv"):
                 out_df.write_csv(out)
@@ -366,13 +366,14 @@ def stream_csv(
     lf = pl.scan_csv(path, has_header=True, infer_schema_length=0, ignore_errors=True, try_parse_dates=True)
 
     mmsi_list = _parse_mmsi_csv(mmsi)
-    if mmsi_list and "MMSI" in lf.columns:
+    schema_names = set(lf.collect_schema().names())
+    if mmsi_list and "MMSI" in schema_names:
         import polars as pl
         lf = lf.filter(pl.col("MMSI").is_in(mmsi_list))
 
     offset = 0
     while True:
-        df = lf.slice(offset, chunk_size).collect(streaming=True)
+        df = lf.slice(offset, chunk_size).collect(engine="streaming")
         if df.height == 0:
             break
         cols = [c for c in ["MMSI", "ts", "LAT", "LON", "COG", "SOG", "Draft"] if c in df.columns]

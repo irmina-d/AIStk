@@ -66,7 +66,7 @@ def main() -> None:
     if MMSI_LIST:
         lf = lf.filter(pl.col("MMSI").is_in(MMSI_LIST))
     lf = lf.filter((pl.col("ts") >= pl.lit(DATE_FROM)) & (pl.col("ts") < pl.lit(DATE_TO)))
-    res_lazy = compute_stats_lazy(lf, level="mmsi").collect(streaming=True)
+    res_lazy = compute_stats_lazy(lf, level="mmsi").collect(engine="streaming")
     print(res_lazy.sort("distance_km", descending=True).head())
 
     print("[6/9] Event detection (batch)…")
@@ -81,14 +81,15 @@ def main() -> None:
 
     print("[9/9] Streaming simulation from CSV (chunked)…\n   This prints JSON events as they occur.")
     lf_stream = pl.scan_csv(f"{CSV_ROOT}/{CSV_PATTERN}", has_header=True, infer_schema_length=0, ignore_errors=True, try_parse_dates=True)
-    if MMSI_LIST and "MMSI" in lf_stream.columns:
+    lf_stream_schema = set(lf_stream.collect_schema().names())
+    if MMSI_LIST and "MMSI" in lf_stream_schema:
         lf_stream = lf_stream.filter(pl.col("MMSI").is_in(MMSI_LIST))
 
     chunk_size = 20_000
     offset = 0
     total_events = 0
     while True:
-        chunk = lf_stream.slice(offset, chunk_size).collect(streaming=True)
+        chunk = lf_stream.slice(offset, chunk_size).collect(engine="streaming")
         if chunk.height == 0:
             break
         cols = [c for c in ["MMSI","ts","LAT","LON","COG","SOG","Draft"] if c in chunk.columns]

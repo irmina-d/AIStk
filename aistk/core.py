@@ -339,7 +339,7 @@ class AISDataset:
         pl.DataFrame
             Collected frame (streaming enabled).
         """
-        return self._build().collect(streaming=True)
+        return self._build().collect(engine="streaming")
 
     def write_parquet(self, path: PathLike, partition: Optional[str] = None) -> None:
         """
