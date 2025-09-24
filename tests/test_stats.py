@@ -1,6 +1,11 @@
 
-import polars as pl, os, shutil
+import os
+import shutil
+
+import polars as pl
+
 from aistk.core import AISDataset
+from aistk.stats import compute_stats_df
 
 def test_stats(tmp_path):
     src = os.path.join(os.path.dirname(__file__), "data", "mini_ais.csv")
@@ -11,3 +16,19 @@ def test_stats(tmp_path):
     stats = ds.stats()
     assert stats.height == 1
     assert "distance_km" in stats.columns
+
+
+def test_compute_stats_handles_all_null_sog():
+    df = pl.DataFrame(
+        {
+            "LAT": [10.0, 10.001],
+            "LON": [20.0, 20.001],
+            "SOG": pl.Series("SOG", [None, None], dtype=pl.Float64),
+        }
+    )
+
+    stats = compute_stats_df(df)
+
+    assert stats.height == 1
+    assert stats["max_sog"][0] is None
+    assert stats["avg_sog"][0] is None
