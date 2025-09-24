@@ -17,8 +17,8 @@ def _write_sample_csvs(tmp_dir):
             "2024-01-01T01:00:00", "2024-01-01T01:30:00",
         ],
     })
-    (tmp_dir / "a.csv").write_text(df.slice(0, 2).write_csv().decode())
-    (tmp_dir / "b.csv").write_text(df.slice(2, 2).write_csv().decode())
+    df.slice(0, 2).write_csv(tmp_dir / "a.csv")
+    df.slice(2, 2).write_csv(tmp_dir / "b.csv")
 
 
 def test_cli_scan_stats_events(tmp_dir):

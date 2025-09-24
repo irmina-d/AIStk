@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import glob
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional, Sequence, Union
 
@@ -66,7 +67,37 @@ def _valid_geo() -> pl.Expr:
     pl.Expr
         Boolean expression: ``-90 <= LAT <= 90`` and ``-180 <= LON <= 180``.
     """
-    return (pl.col("LAT").is_between(-90, 90)) & (pl.col("LON").is_between(-180, 180))
+    lat = pl.col("LAT").cast(pl.Float64, strict=False)
+    lon = pl.col("LON").cast(pl.Float64, strict=False)
+    return lat.is_between(-90, 90) & lon.is_between(-180, 180)
+
+
+def _parse_temporal_literal(value: str) -> datetime:
+    """Parse an ISO-like timestamp string into a Python ``datetime``.
+
+    Parameters
+    ----------
+    value : str
+        Literal to parse. ``strict=False`` parsing is used to accept a
+        reasonably wide range of ISO formats (e.g. ``YYYY-MM-DD`` and
+        ``YYYY-MM-DDTHH:MM:SS``).
+
+    Returns
+    -------
+    datetime
+        Parsed timestamp.
+
+    Raises
+    ------
+    ValueError
+        If the literal cannot be parsed into a timestamp.
+    """
+
+    parsed = pl.Series([value]).str.to_datetime(strict=False)
+    dt = parsed.to_list()[0]
+    if dt is None:
+        raise ValueError(f"Could not parse datetime literal: {value!r}")
+    return dt
 
 
 def _ts_expr() -> pl.Expr:
@@ -163,7 +194,10 @@ class AISDataset:
         - This marks that a timestamp column ``ts`` must be materialized.
         """
         self._need_ts = True
-        self._filters.append((_ts_expr() >= pl.lit(start)) & (_ts_expr() < pl.lit(end)))
+
+        start_dt = _parse_temporal_literal(start)
+        end_dt = _parse_temporal_literal(end)
+        self._filters.append((pl.col("ts") >= pl.lit(start_dt)) & (pl.col("ts") < pl.lit(end_dt)))
         return self
 
     def filter(
@@ -189,17 +223,37 @@ class AISDataset:
         AISDataset
             Self, for chaining.
         """
+        def _coerce_int_values(values: Iterable[Union[int, str, None]]) -> list[int]:
+            coerced: list[int] = []
+            for v in values:
+                if v is None:
+                    continue
+                coerced.append(int(v))
+            return coerced
+
         if mmsi is not None:
             if isinstance(mmsi, (list, tuple, set)):
-                self._filters.append(pl.col("MMSI").is_in(list(mmsi)))
+                coerced = _coerce_int_values(mmsi)
             else:
-                self._filters.append(pl.col("MMSI") == mmsi)
+                coerced = int(mmsi)
+            expr = (
+                pl.col("MMSI").cast(pl.Int64, strict=False).is_in(coerced)
+                if isinstance(coerced, list)
+                else pl.col("MMSI").cast(pl.Int64, strict=False) == coerced
+            )
+            self._filters.append(expr)
 
         if imo is not None:
             if isinstance(imo, (list, tuple, set)):
-                self._filters.append(pl.col("IMO").is_in(list(imo)))
+                coerced = _coerce_int_values(imo)
             else:
-                self._filters.append(pl.col("IMO") == imo)
+                coerced = int(imo)
+            expr = (
+                pl.col("IMO").cast(pl.Int64, strict=False).is_in(coerced)
+                if isinstance(coerced, list)
+                else pl.col("IMO").cast(pl.Int64, strict=False) == coerced
+            )
+            self._filters.append(expr)
 
         if callsign is not None:
             if isinstance(callsign, (list, tuple, set)):
@@ -234,25 +288,41 @@ class AISDataset:
         if self._selected:
             lf = lf.select([pl.col(c) for c in self._selected if isinstance(c, str)])
 
-        # Derive ts if requested or referenced
-        if self._need_ts or any("BaseDateTime" in str(f) for f in self._filters):
+        need_ts = self._need_ts or any("BaseDateTime" in str(f) for f in self._filters)
+        if need_ts:
             lf = lf.with_columns(_ts_expr())
 
-        # Apply accumulated filters
         if self._filters:
             cond = self._filters[0]
             for f in self._filters[1:]:
                 cond = cond & f
             lf = lf.filter(cond)
 
-        # Geo sanity
-        if "LAT" in lf.columns and "LON" in lf.columns:
+        schema_names = set(lf.collect_schema().names())
+
+        numeric_casts: list[pl.Expr] = []
+        numeric_dtypes = {
+            "LAT": pl.Float64,
+            "LON": pl.Float64,
+            "SOG": pl.Float64,
+            "COG": pl.Float64,
+            "Draft": pl.Float64,
+            "MMSI": pl.Int64,
+            "IMO": pl.Int64,
+        }
+        for col, dtype in numeric_dtypes.items():
+            if col in schema_names:
+                numeric_casts.append(pl.col(col).cast(dtype, strict=False).alias(col))
+        if numeric_casts:
+            lf = lf.with_columns(numeric_casts)
+
+        if {"LAT", "LON"}.issubset(schema_names):
             lf = lf.filter(_valid_geo())
 
-        # Sorting if timestamp present
-        if "ts" in lf.columns and "MMSI" in lf.columns:
+        schema_names = set(lf.collect_schema().names())
+        if {"ts", "MMSI"}.issubset(schema_names):
             lf = lf.sort(["MMSI", "ts"])
-        elif "ts" in lf.columns:
+        elif "ts" in schema_names:
             lf = lf.sort("ts")
 
         return lf

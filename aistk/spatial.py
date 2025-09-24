@@ -62,19 +62,30 @@ def grid_features(df: pl.DataFrame, resolution: int = 7) -> pl.DataFrame:
     except ImportError:
         raise RuntimeError("Install h3: pip install h3")
 
+    if hasattr(h3, "geo_to_h3"):
+        to_cell = lambda lat, lon, res: h3.geo_to_h3(lat, lon, res)
+    elif hasattr(h3, "latlng_to_cell"):
+        to_cell = lambda lat, lon, res: h3.latlng_to_cell(lat, lon, res)
+    else:
+        raise RuntimeError("Unsupported h3 API; upgrade the h3 package")
+
     if not {"LAT", "LON"}.issubset(df.columns):
         raise ValueError("LAT/LON required for H3 gridding")
 
     df = df.with_columns(
-        df.apply(lambda row: h3.geo_to_h3(row["LAT"], row["LON"], resolution)).alias("h3")
+        pl.struct(["LAT", "LON"]).map_elements(
+            lambda row: to_cell(row["LAT"], row["LON"], resolution),
+            return_dtype=pl.Utf8,
+        ).alias("h3")
     )
-    grouped = df.group_by("h3").agg(
-        [
-            pl.count().alias("points"),
-            pl.mean("SOG").alias("avg_sog"),
-            pl.mean("COG").alias("avg_cog"),
-        ]
-    )
+
+    aggregations: list[pl.Expr] = [pl.len().alias("points")]
+    if "SOG" in df.columns:
+        aggregations.append(pl.mean("SOG").alias("avg_sog"))
+    if "COG" in df.columns:
+        aggregations.append(pl.mean("COG").alias("avg_cog"))
+
+    grouped = df.group_by("h3").agg(aggregations)
     return grouped
 
 
