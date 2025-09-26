@@ -2,6 +2,7 @@
 ![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)
 [![Docs](https://img.shields.io/badge/docs-online-blue.svg)](https://irmina-d.github.io/AIStk/)
 ![Visitors](https://komarev.com/ghpvc/?username=irmina-d&color=green&style=plastic)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/aistk?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/aistk)
 
 # AIStk — AIS Toolkit for Spatio‑Temporal Datasets
 
