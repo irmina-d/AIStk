@@ -3,7 +3,7 @@
 [![Docs](https://img.shields.io/badge/docs-online-blue.svg)](https://irmina-d.github.io/AIStk/)
 ![Visitors](https://komarev.com/ghpvc/?username=irmina-d&color=green&style=plastic)
 [![PyPI Downloads](https://static.pepy.tech/personalized-badge/aistk?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/aistk)
-
+[![DOI](https://zenodo.org/badge/1053545932.svg)](https://doi.org/10.5281/zenodo.19560234)
 # AIStk — AIS Toolkit for Spatio‑Temporal Datasets
 
 Minimal, fast toolkit for building high‑resolution AIS datasets from decoded CSV files.
