@@ -53,21 +53,4 @@ results/benchmark_ais_2024_01_01/benchmark_table_for_manuscript.csv
 results/benchmark_ais_2024_01_01/benchmark_table_for_manuscript.json
 ```
 
-## What to report in the manuscript
 
-Use `benchmark_table_for_manuscript.csv` to report:
-
-- input file size,
-- number of AIS records,
-- number of unique MMSI values,
-- number of repeated runs,
-- median, mean and standard deviation of runtime,
-- median, mean and standard deviation of peak RSS memory,
-- median output size and output row count,
-- whether Pandas succeeded or failed under the same local constraints.
-
-This benchmark positions AIStk as an AIS-specific layer on top of Polars, not as
-a replacement for Polars. The raw Polars baseline is included to quantify the
-wrapper overhead, while Pandas is included as a conventional research-script
-baseline. The vessel-wise event benchmark demonstrates that AIStk also evaluates
-AIS-specific analytical functionality, not only generic CSV export.
