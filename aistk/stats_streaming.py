@@ -87,96 +87,87 @@ def _angle_diff_deg_wrap(cur: pl.Expr, prev: pl.Expr) -> pl.Expr:
     return d.degrees().abs()
 
 
+def _optional_numeric_expr(column: str, fallback: float = 0.0) -> pl.Expr:
+    """Return a numeric expression if ``column`` exists later, otherwise a literal."""
+    return pl.col(column).cast(pl.Float64, strict=False) if column else pl.lit(fallback)
+
+
 def compute_stats_lazy(lf: pl.LazyFrame, level: str = "mmsi") -> pl.LazyFrame:
     """
     Compute streaming-friendly trajectory statistics on a Polars LazyFrame.
 
-    This avoids materialization into NumPy arrays and instead leverages Polars
-    expressions, making it suitable for very large AIS datasets processed with
-    ``collect(engine="streaming")``.
-
-    Parameters
-    ----------
-    lf : pl.LazyFrame
-        LazyFrame containing AIS records. Required columns:
-        - ``LAT`` : latitude (degrees),
-        - ``LON`` : longitude (degrees).
-        Optional columns:
-        - ``MMSI`` : vessel identifier,
-        - ``ts`` : timestamp (datetime),
-        - ``SOG`` : speed over ground,
-        - ``COG`` : course over ground.
-    level : {"mmsi"}, default="mmsi"
-        Aggregation level. If ``"mmsi"`` and ``MMSI`` column exists, group by vessel.
-        Otherwise compute a single global summary.
-
-    Returns
-    -------
-    pl.LazyFrame
-        LazyFrame with aggregated metrics:
-        - ``points`` : number of points,
-        - ``distance_km`` : cumulative great-circle distance,
-        - ``straight_km`` : straight-line distance between first and last point,
-        - ``tortuosity`` : ratio ``distance_km / straight_km``,
-        - ``turn_index_deg`` : cumulative wrapped course change (degrees),
-        - ``avg_sog`` : mean speed over ground,
-        - ``max_sog`` : maximum speed over ground.
-
-    Notes
-    -----
-    - Use ``.collect(engine=\"streaming\")`` on the returned LazyFrame for large datasets.
-    - Distances are computed with haversine approximation on a spherical Earth.
-    - Turn index is a simple cumulative heading change proxy.
-
-    Examples
-    --------
-    >>> import polars as pl
-    >>> from aistk.stats_streaming import compute_stats_lazy
-    >>> lf = pl.LazyFrame({"MMSI":[1,1], "LAT":[54.3,54.31], "LON":[18.6,18.61], "SOG":[10,12], "COG":[45,50]})
-    >>> out = compute_stats_lazy(lf).collect(engine="streaming")
-    >>> out.columns
-    ['MMSI','points','distance_km','straight_km','tortuosity','turn_index_deg','avg_sog','max_sog']
+    The implementation keeps all consecutive-point operations vessel-aware. When
+    ``MMSI`` is available, segment distances and course changes are calculated
+    only within the same MMSI, preventing cross-vessel artefacts in large AIS
+    files. Use ``.collect(engine="streaming")`` on the returned LazyFrame.
     """
     schema_names = set(lf.collect_schema().names())
+    required = {"LAT", "LON"}
+    if not required.issubset(schema_names):
+        return pl.LazyFrame()
+
     has_mmsi = "MMSI" in schema_names
     has_ts = "ts" in schema_names
+    has_cog = "COG" in schema_names
+    has_sog = "SOG" in schema_names
 
-    # Sort for correct lag/lead
-    lf = (
-        lf.sort(["MMSI", "ts"])
-        if has_mmsi and has_ts
-        else (lf.sort("ts") if has_ts else lf)
+    # Sort for correct lag/lead. The following group guards prevent the last row
+    # of one vessel from being connected to the first row of another vessel.
+    lf = lf.sort(["MMSI", "ts"]) if has_mmsi and has_ts else (lf.sort("ts") if has_ts else lf)
+
+    if has_mmsi:
+        same_group_next = pl.col("MMSI") == pl.col("MMSI").shift(-1)
+        same_group_prev = pl.col("MMSI") == pl.col("MMSI").shift(1)
+    else:
+        same_group_next = pl.lit(True)
+        same_group_prev = pl.lit(True)
+
+    seg_km = (
+        pl.when(same_group_next)
+        .then(_haversine_km_expr(pl.col("LAT"), pl.col("LON"), pl.col("LAT").shift(-1), pl.col("LON").shift(-1)))
+        .otherwise(0.0)
+        .fill_null(0.0)
+        .alias("seg_km")
     )
 
-    # Per-row segment distance to next point
-    same_group_next = pl.lit(True) if not has_mmsi else (pl.col("MMSI") == pl.col("MMSI").shift(-1))
-    seg_km = pl.when(same_group_next).then(
-        _haversine_km_expr(pl.col("LAT"), pl.col("LON"), pl.col("LAT").shift(-1), pl.col("LON").shift(-1))
-    ).otherwise(0.0).alias("seg_km")
-
-    # Straight-line distance (first→last)
-    first_lat, first_lon = pl.col("LAT").first(), pl.col("LON").first()
-    last_lat, last_lon = pl.col("LAT").last(), pl.col("LON").last()
-    straight_km = _haversine_km_expr(first_lat, first_lon, last_lat, last_lon).alias("straight_km")
-
-    # Turn index
-    turn_deg = _angle_diff_deg_wrap(pl.col("COG"), pl.col("COG").shift(1)).fill_null(0.0).alias("turn_deg")
+    if has_cog:
+        turn_deg = (
+            pl.when(same_group_prev)
+            .then(_angle_diff_deg_wrap(pl.col("COG"), pl.col("COG").shift(1)))
+            .otherwise(0.0)
+            .fill_null(0.0)
+            .alias("turn_deg")
+        )
+    else:
+        turn_deg = pl.lit(None, dtype=pl.Float64).alias("turn_deg")
 
     base = lf.with_columns([seg_km, turn_deg])
 
     group_keys = ["MMSI"] if level == "mmsi" and has_mmsi else []
     agg = base.group_by(group_keys) if group_keys else base.group_by([])
 
-    result = agg.agg(
-        [
-            pl.len().alias("points"),
-            pl.sum("seg_km").alias("distance_km"),
-            straight_km,
-            pl.sum("turn_deg").alias("turn_index_deg"),
+    first_lat, first_lon = pl.col("LAT").first(), pl.col("LON").first()
+    last_lat, last_lon = pl.col("LAT").last(), pl.col("LON").last()
+    straight_km = _haversine_km_expr(first_lat, first_lon, last_lat, last_lon).alias("straight_km")
+
+    aggregations = [
+        pl.len().alias("points"),
+        pl.sum("seg_km").alias("distance_km"),
+        straight_km,
+        pl.sum("turn_deg").alias("turn_index_deg"),
+    ]
+    if has_sog:
+        aggregations.extend([
             pl.mean("SOG").alias("avg_sog"),
             pl.max("SOG").alias("max_sog"),
-        ]
-    )
+        ])
+    else:
+        aggregations.extend([
+            pl.lit(None, dtype=pl.Float64).alias("avg_sog"),
+            pl.lit(None, dtype=pl.Float64).alias("max_sog"),
+        ])
+
+    result = agg.agg(aggregations)
 
     result = result.with_columns(
         (
@@ -187,7 +178,6 @@ def compute_stats_lazy(lf: pl.LazyFrame, level: str = "mmsi") -> pl.LazyFrame:
         ).alias("tortuosity")
     )
 
-    # Rounding for consistency
     result = result.with_columns(
         [
             pl.col("distance_km").round(3),

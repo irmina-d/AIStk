@@ -10,53 +10,201 @@ import polars as pl
 
 from .events import detect_events_df
 from .stats import compute_stats_df
+from .stats_streaming import compute_stats_lazy
 from .utils import haversine_km  # used indirectly by stats
 from .viz import plot_track_html
 
 PathLike = Union[str, Path]
 
 
-def _scan_many(path: PathLike, pattern: str) -> pl.LazyFrame:
-    """
-    Scan a directory for many CSV files and return a concatenated LazyFrame.
+_AIS_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    "MMSI": ("MMSI", "mmsi", "maritime_mobile_service_identity", "maritimemobileserviceidentity"),
+    "BaseDateTime": (
+        "BaseDateTime",
+        "base_date_time",
+        "basedatetime",
+        "base datetime",
+        "timestamp",
+        "datetime",
+        "date_time",
+        "time",
+        "ts",
+    ),
+    "LAT": ("LAT", "lat", "latitude", "Latitude"),
+    "LON": ("LON", "lon", "long", "lng", "longitude", "Longitude"),
+    "SOG": ("SOG", "sog", "speed_over_ground", "speed over ground"),
+    "COG": ("COG", "cog", "course_over_ground", "course over ground"),
+    "Heading": ("Heading", "heading", "true_heading", "true heading"),
+    "IMO": ("IMO", "imo", "imo_number", "imo number"),
+    "CallSign": ("CallSign", "callsign", "call_sign", "call sign"),
+    "VesselName": ("VesselName", "vesselname", "vessel_name", "vessel name", "shipname", "ship_name"),
+    "VesselType": ("VesselType", "vesseltype", "vessel_type", "vessel type"),
+    "Status": ("Status", "status", "nav_status", "navigation_status"),
+    "Length": ("Length", "length", "length_m", "length_meters"),
+    "Width": ("Width", "width", "width_m", "width_meters"),
+    "Draft": ("Draft", "draft", "draught", "Draught", "draught_m", "draft_m"),
+    "Cargo": ("Cargo", "cargo"),
+    "TransceiverClass": (
+        "TransceiverClass",
+        "transceiverclass",
+        "transceiver_class",
+        "transceiver class",
+        "transceiver",
+        "ais_transceiver",
+        "class",
+    ),
+}
 
-    Parameters
-    ----------
-    path : str or pathlib.Path
-        Root directory to search.
-    pattern : str
-        Glob pattern (e.g., ``"*.csv"``).
 
-    Returns
-    -------
-    pl.LazyFrame
-        Concatenated lazy scan of matching CSV files.
+def _column_key(name: str) -> str:
+    """Normalize a column name for tolerant AIS schema matching."""
+    cleaned = str(name).replace("\ufeff", "").strip().lower()
+    return "".join(ch for ch in cleaned if ch.isalnum())
 
-    Raises
-    ------
-    FileNotFoundError
-        If no files match the given pattern.
 
-    Notes
-    -----
-    - Uses ``pl.scan_csv`` with ``infer_schema_length=0`` and ``try_parse_dates=True``
-      for performance and loose parsing on large AIS dumps.
-    """
+def _canonical_rename_map(columns: Iterable[str]) -> dict[str, str]:
+    """Return a safe rename mapping from common AIS variants to canonical names."""
+    alias_to_canonical: dict[str, str] = {}
+    for canonical, aliases in _AIS_COLUMN_ALIASES.items():
+        for alias in aliases:
+            alias_to_canonical[_column_key(alias)] = canonical
+
+    existing = list(columns)
+    used_targets = set(existing)
+    mapping: dict[str, str] = {}
+    for col in existing:
+        stripped = str(col).replace("\ufeff", "").strip()
+        target = alias_to_canonical.get(_column_key(stripped), stripped)
+        # Rename BOM/whitespace variants and known aliases, but never create a
+        # duplicate target column. Duplicate schemas should be handled upstream.
+        if target != col and target not in used_targets - {col} and target not in mapping.values():
+            mapping[col] = target
+            used_targets.add(target)
+    return mapping
+
+
+def _normalize_ais_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Normalize common AIS column-name variants in a LazyFrame."""
+    rename_map = _canonical_rename_map(lf.collect_schema().names())
+    return lf.rename(rename_map) if rename_map else lf
+
+
+def _infer_csv_separator(path: PathLike, sample_bytes: int = 8192) -> str:
+    """Infer a simple CSV separator from the first non-empty line of a file."""
+    path = Path(path)
+    with path.open("rb") as f:
+        sample = f.read(sample_bytes)
+    text = sample.decode("utf-8-sig", errors="ignore")
+    first_line = next((line for line in text.splitlines() if line.strip()), "")
+    candidates = [",", ";", "\t", "|"]
+    counts = {sep: first_line.count(sep) for sep in candidates}
+    best = max(counts, key=counts.get)
+    return best if counts[best] > 0 else ","
+
+
+def _discover_files(path: PathLike, pattern: str) -> list[str]:
+    """Discover input CSV files and fail loudly when the glob is empty."""
     files = sorted(glob.glob(os.path.join(str(path), pattern)))
     if not files:
         raise FileNotFoundError(f"No files match: {path}/{pattern}")
-    scans = [
-        pl.scan_csv(
-            f,
-            has_header=True,
-            infer_schema_length=0,
-            ignore_errors=True,
-            try_parse_dates=True,
-        )
-        for f in files
-    ]
-    return pl.concat(scans, rechunk=False)
+    return files
 
+
+def _scan_files(files: Sequence[PathLike]) -> pl.LazyFrame:
+    """Scan AIS CSV files with per-file separator inference and schema normalization."""
+    if not files:
+        raise FileNotFoundError("No input files were provided to _scan_files().")
+
+    scans: list[pl.LazyFrame] = []
+    for file in files:
+        sep = _infer_csv_separator(file)
+        scans.append(
+            pl.scan_csv(
+                str(file),
+                has_header=True,
+                separator=sep,
+                infer_schema_length=0,
+                ignore_errors=True,
+                try_parse_dates=True,
+                truncate_ragged_lines=True,
+            )
+        )
+
+    try:
+        lf = pl.concat(scans, how="diagonal_relaxed", rechunk=False)
+    except TypeError:  # older Polars fallback
+        lf = pl.concat(scans, rechunk=False)
+    return _normalize_ais_columns(lf)
+
+
+def _scan_many(path: PathLike, pattern: str) -> pl.LazyFrame:
+    """
+    Scan a directory for many AIS CSV files and return a concatenated LazyFrame.
+
+    The scanner is intentionally tolerant for public AIS dumps used in reviewer
+    benchmarks: it infers the separator from the header line and normalizes
+    common column-name variants (e.g. ``mmsi`` -> ``MMSI``, ``timestamp`` ->
+    ``BaseDateTime``). This prevents large-file benchmarks from silently
+    producing zero-column plans when a CSV uses a different dialect.
+    """
+    return _scan_files(_discover_files(path, pattern))
+
+
+def _available_columns_message(available: Iterable[str]) -> str:
+    cols = list(available)
+    preview = ", ".join(cols[:40])
+    suffix = " ..." if len(cols) > 40 else ""
+    return f"available columns: [{preview}{suffix}]"
+
+
+def _select_existing_columns(
+    lf: pl.LazyFrame,
+    requested: Sequence[str],
+    *,
+    required_extra: Sequence[str] = (),
+) -> tuple[pl.LazyFrame, list[str]]:
+    """Select requested columns, retaining required extras, and fail informatively."""
+    available = set(lf.collect_schema().names())
+    requested_clean = [c for c in requested if isinstance(c, str) and c]
+    selected = [c for c in requested_clean if c in available]
+    missing = [c for c in requested_clean if c not in available]
+    extras = [c for c in required_extra if c in available and c not in selected]
+
+    if requested_clean and not selected:
+        raise ValueError(
+            "None of the requested columns were found after AIS schema normalization. "
+            f"Requested: {requested_clean}. {_available_columns_message(available)}. "
+            "Check the CSV separator/header, or run the benchmark with --cols matching the file."
+        )
+
+    keep = list(dict.fromkeys(selected + extras))
+    if not keep:
+        return lf, selected
+    return lf.select([pl.col(c) for c in keep]), selected
+
+
+def _with_ts(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Create/normalize a ``ts`` column from ``BaseDateTime`` or existing ``ts``."""
+    schema = lf.collect_schema()
+    names = set(schema.names())
+    if "BaseDateTime" in names:
+        return lf.with_columns(
+            pl.coalesce(
+                [
+                    pl.col("BaseDateTime").str.strptime(pl.Datetime, strict=False),
+                    pl.col("BaseDateTime").str.to_datetime(strict=False),
+                ]
+            ).alias("ts")
+        )
+    if "ts" in names:
+        dtype = schema["ts"]
+        if dtype == pl.Datetime:
+            return lf
+        return lf.with_columns(pl.col("ts").str.to_datetime(strict=False).alias("ts"))
+    raise pl.exceptions.ColumnNotFoundError(
+        "AIStk could not create a timestamp column. Expected 'BaseDateTime' "
+        f"or 'ts'; {_available_columns_message(names)}."
+    )
 
 def _valid_geo() -> pl.Expr:
     """
@@ -148,7 +296,8 @@ class AISDataset:
     def __init__(self, root: PathLike, pattern: str = "*.csv") -> None:
         self.root: str = str(root)
         self.pattern: str = pattern
-        self._lf: pl.LazyFrame = _scan_many(self.root, pattern)
+        self.files: list[str] = _discover_files(self.root, pattern)
+        self._lf: pl.LazyFrame = _scan_files(self.files)
         self._filters: list[pl.Expr] = []
         self._selected: Optional[Sequence[str]] = None
         self._need_ts: bool = False
@@ -266,9 +415,16 @@ class AISDataset:
     # -----------------------
     # Build LazyFrame
     # -----------------------
-    def _build(self) -> pl.LazyFrame:
+    def _build(self, sort_rows: bool = True) -> pl.LazyFrame:
         """
         Compose the internal LazyFrame with pending selections/filters.
+
+        Parameters
+        ----------
+        sort_rows : bool, default=True
+            Sort by ``[MMSI, ts]`` when available. Disable for raw CSV→Parquet
+            conversion benchmarks where preserving input order avoids a costly
+            global sort.
 
         Returns
         -------
@@ -285,18 +441,36 @@ class AISDataset:
         """
         lf = self._lf
 
+        need_ts = self._need_ts or any("BaseDateTime" in str(f) or "ts" in str(f) for f in self._filters)
+        final_selected: Optional[list[str]] = None
         if self._selected:
-            lf = lf.select([pl.col(c) for c in self._selected if isinstance(c, str)])
+            available = set(lf.collect_schema().names())
+            required_extra: list[str] = []
+            # Keep a timestamp source available for filtering even if the user
+            # did not request it in --cols. We select final requested columns
+            # after filters have been applied.
+            if need_ts:
+                if "BaseDateTime" in available and "BaseDateTime" not in self._selected:
+                    required_extra.append("BaseDateTime")
+                elif "ts" in available and "ts" not in self._selected:
+                    required_extra.append("ts")
+            lf, selected = _select_existing_columns(lf, self._selected, required_extra=required_extra)
+            final_selected = list(selected)
 
-        need_ts = self._need_ts or any("BaseDateTime" in str(f) for f in self._filters)
         if need_ts:
-            lf = lf.with_columns(_ts_expr())
+            lf = _with_ts(lf)
 
         if self._filters:
             cond = self._filters[0]
             for f in self._filters[1:]:
                 cond = cond & f
             lf = lf.filter(cond)
+
+        if final_selected is not None:
+            # Preserve user-requested columns and retain derived ts when it was
+            # needed for filtering or downstream trajectory operations.
+            keep = list(dict.fromkeys(final_selected + (["ts"] if need_ts else [])))
+            lf = lf.select([pl.col(c) for c in keep if c in lf.collect_schema().names()])
 
         schema_names = set(lf.collect_schema().names())
 
@@ -320,17 +494,22 @@ class AISDataset:
             lf = lf.filter(_valid_geo())
 
         schema_names = set(lf.collect_schema().names())
-        if {"ts", "MMSI"}.issubset(schema_names):
-            lf = lf.sort(["MMSI", "ts"])
-        elif "ts" in schema_names:
-            lf = lf.sort("ts")
+        if sort_rows:
+            if {"ts", "MMSI"}.issubset(schema_names):
+                lf = lf.sort(["MMSI", "ts"])
+            elif "ts" in schema_names:
+                lf = lf.sort("ts")
 
         return lf
+
+    def lazy(self, sort_rows: bool = True) -> pl.LazyFrame:
+        """Return the built Polars LazyFrame without materialising it."""
+        return self._build(sort_rows=sort_rows)
 
     # -----------------------
     # Materialization / I/O
     # -----------------------
-    def collect(self) -> pl.DataFrame:
+    def collect(self, sort_rows: bool = True) -> pl.DataFrame:
         """
         Materialize the dataset as a Polars DataFrame.
 
@@ -339,30 +518,31 @@ class AISDataset:
         pl.DataFrame
             Collected frame (streaming enabled).
         """
-        return self._build().collect(engine="streaming")
+        return self._build(sort_rows=sort_rows).collect(engine="streaming")
 
-    def write_parquet(self, path: PathLike, partition: Optional[str] = None) -> None:
+    def write_parquet(
+        self,
+        path: PathLike,
+        partition: Optional[str] = None,
+        *,
+        streaming: bool = True,
+        sort_rows: bool = False,
+    ) -> None:
         """
-        Write the (materialized) dataset to a Parquet file.
+        Write the dataset to a Parquet file.
 
-        Parameters
-        ----------
-        path : str or pathlib.Path
-            Output file path (or directory if you later add partitioned writes).
-        partition : {"year", "year/month", "year/month/day"}, optional
-            When provided **and** ``ts`` exists, helper columns (``year``,
-            ``month``, ``day``) are added before writing. (Current
-            implementation writes a single Parquet file; it does not create a
-            directory tree per partition yet.)
-
-        Notes
-        -----
-        - Extend this method if you need true partitioned output layout
-          (e.g., ``root/year=YYYY/month=MM/day=DD/*.parquet``).
+        For large raw AIS CSV exports, ``sort_rows=False`` avoids an expensive
+        global sort and is the recommended CSV→Parquet benchmarking path. When
+        ``streaming=True``, AIStk first tries Polars ``sink_parquet`` and falls
+        back to streaming collection if the current Polars plan/version does not
+        support direct sinking.
         """
-        df = self.collect()
-        if partition and "ts" in df.columns:
-            if partition.lower() in {"year", "year/month", "year/month/day"}:
+        out_path = Path(path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if partition:
+            df = self.collect(sort_rows=sort_rows)
+            if "ts" in df.columns and partition.lower() in {"year", "year/month", "year/month/day"}:
                 df = df.with_columns(
                     [
                         pl.col("ts").dt.year().alias("year"),
@@ -370,9 +550,19 @@ class AISDataset:
                         pl.col("ts").dt.day().alias("day"),
                     ]
                 )
-            df.write_parquet(str(path))
-        else:
-            df.write_parquet(str(path))
+            df.write_parquet(str(out_path))
+            return
+
+        lf = self._build(sort_rows=sort_rows)
+        if streaming and hasattr(lf, "sink_parquet"):
+            try:
+                lf.sink_parquet(str(out_path))
+                return
+            except Exception:
+                # Some query plans (e.g. global sorting) may not be sinkable in
+                # older Polars versions. Fall back to streaming collect.
+                pass
+        lf.collect(engine="streaming").write_parquet(str(out_path))
 
     # -----------------------
     # Analytics
@@ -391,8 +581,7 @@ class AISDataset:
         pl.DataFrame
             Aggregated metrics.
         """
-        df = self.collect()
-        return compute_stats_df(df, level=level)
+        return compute_stats_lazy(self._build(sort_rows=True), level=level).collect(engine="streaming")
 
     def detect_events(
         self,

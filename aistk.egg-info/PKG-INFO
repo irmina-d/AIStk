@@ -1,3 +1,71 @@
+Metadata-Version: 2.4
+Name: aistk
+Version: 1.0.0
+Summary: AIS Toolkit for high-resolution spatio-temporal datasets
+Author: Irmina Durlik
+License: 
+        MIT License
+        
+        Copyright (c) 2025 Irmina Durlik
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+        
+Project-URL: Homepage, https://github.com/irmina-d/AIStk
+Project-URL: Documentation, https://irmina-d.github.io/AIStk/
+Project-URL: Repository, https://github.com/irmina-d/AIStk
+Project-URL: Issues, https://github.com/irmina-d/AIStk/issues
+Keywords: ais,maritime,tracking,polars,spatio-temporal
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Information Analysis
+Classifier: Topic :: Scientific/Engineering :: GIS
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: polars>=1.5.0
+Requires-Dist: numpy>=1.24
+Requires-Dist: pyarrow>=12.0
+Requires-Dist: typer>=0.12
+Provides-Extra: viz
+Requires-Dist: folium; extra == "viz"
+Provides-Extra: benchmark
+Requires-Dist: psutil>=5.9; extra == "benchmark"
+Requires-Dist: pandas>=2.0; extra == "benchmark"
+Provides-Extra: dask
+Requires-Dist: dask[dataframe]>=2024.1.0; extra == "dask"
+Provides-Extra: spark
+Requires-Dist: pyspark>=3.5; extra == "spark"
+Provides-Extra: spatial
+Requires-Dist: shapely>=2.0; extra == "spatial"
+Requires-Dist: h3>=3.7; extra == "spatial"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4; extra == "dev"
+Requires-Dist: ruff>=0.5; extra == "dev"
+Dynamic: license-file
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)
 [![Docs](https://img.shields.io/badge/docs-online-blue.svg)](https://irmina-d.github.io/AIStk/)

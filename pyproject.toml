@@ -36,8 +36,9 @@ classifiers = [
 ]
 dependencies = [
     "polars>=1.5.0",
-    "numpy",
-    "pyarrow",
+    "numpy>=1.24",
+    "pyarrow>=12.0",
+    "typer>=0.12",
 ]
 
 [project.urls]
@@ -48,7 +49,11 @@ Issues = "https://github.com/irmina-d/AIStk/issues"
 
 [project.optional-dependencies]
 viz = ["folium"]
-cli = ["typer"]
+benchmark = ["psutil>=5.9", "pandas>=2.0"]
+dask = ["dask[dataframe]>=2024.1.0"]
+spark = ["pyspark>=3.5"]
+spatial = ["shapely>=2.0", "h3>=3.7"]
+dev = ["pytest>=7.4", "ruff>=0.5"]
 
 [project.scripts]
 aistk = "aistk.cli:app"

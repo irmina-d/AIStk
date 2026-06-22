@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import List, Optional, Sequence, Literal
 
 import typer
@@ -38,6 +39,7 @@ def scan(
     html: Optional[str] = typer.Option(None, help="Save an interactive track map (HTML)."),
     engine: Literal["polars", "dask", "spark"] = typer.Option("polars", help="Execution engine."),
     stream: bool = typer.Option(False, help="Streaming/lazy path when supported (Polars)."),
+    sort_output: bool = typer.Option(False, "--sort-output/--no-sort-output", help="Sort output by MMSI and timestamp before materialisation."),
 ) -> None:
     """
     Scan AIS files and optionally filter, export, and/or plot a map.
@@ -80,12 +82,11 @@ def scan(
             # streaming/lazy path
             from .stats_streaming import compute_stats_lazy
 
-            lf = ds._build()
+            lf = ds._build(sort_rows=sort_output)
             # optional outputs
             if to_parquet:
-                # If Polars version supports sink_parquet, prefer it; otherwise collect streaming.
-                lf.collect(engine="streaming").write_parquet(to_parquet)
-                typer.echo(f"Written Parquet to {to_parquet} (streaming collect)")
+                ds.write_parquet(to_parquet, streaming=True, sort_rows=sort_output)
+                typer.echo(f"Written Parquet to {to_parquet} (Polars lazy/streaming path)")
 
             if html:
                 df = lf.collect(engine="streaming")
@@ -102,7 +103,7 @@ def scan(
 
         # classic path
         if to_parquet:
-            ds.write_parquet(to_parquet)
+            ds.write_parquet(to_parquet, sort_rows=sort_output)
             typer.echo(f"Written Parquet to {to_parquet}")
 
         if html:
@@ -205,6 +206,7 @@ def stats(
             ds = ds.filter(mmsi=mmsi_list)
         df = ds.stats(level=level)
         if out:
+            Path(out).parent.mkdir(parents=True, exist_ok=True)
             if out.endswith(".csv"):
                 df.write_csv(out)
             else:
@@ -228,6 +230,7 @@ def stats(
         lf = ds._build()
         out_df = compute_stats_lazy(lf, level=level).collect(engine="streaming")
         if out:
+            Path(out).parent.mkdir(parents=True, exist_ok=True)
             if out.endswith(".csv"):
                 out_df.write_csv(out)
             else:
@@ -308,6 +311,7 @@ def events(
     stop_sog: float = typer.Option(0.5, help="Stop SOG threshold (knots)."),
     stop_min: int = typer.Option(15, help="Stop minimum duration (minutes)."),
     draft_jump_m: float = typer.Option(0.3, help="Draft change threshold (m)."),
+    gap_s: int = typer.Option(600, help="AIS signal gap threshold (seconds)."),
     out: Optional[str] = typer.Option(None, help="Write events to this Parquet/CSV."),
 ) -> None:
     """
@@ -328,8 +332,16 @@ def events(
         ds = ds.filter(mmsi=mmsi_list)
 
     df = ds.collect()
-    ev = detect_events_df(df, turn_deg=turn_deg, stop_sog=stop_sog, stop_min=stop_min, draft_jump_m=draft_jump_m)
+    ev = detect_events_df(
+        df,
+        turn_deg=turn_deg,
+        stop_sog=stop_sog,
+        stop_min=stop_min,
+        draft_jump_m=draft_jump_m,
+        gap_s=gap_s,
+    )
     if out:
+        Path(out).parent.mkdir(parents=True, exist_ok=True)
         if out.endswith(".csv"):
             ev.write_csv(out)
         else:
@@ -367,9 +379,26 @@ def stream_csv(
 
     mmsi_list = _parse_mmsi_csv(mmsi)
     schema_names = set(lf.collect_schema().names())
-    if mmsi_list and "MMSI" in schema_names:
-        import polars as pl
-        lf = lf.filter(pl.col("MMSI").is_in(mmsi_list))
+    if "ts" not in schema_names and "BaseDateTime" in schema_names:
+        lf = lf.with_columns(
+            pl.coalesce(
+                [
+                    pl.col("BaseDateTime").str.strptime(pl.Datetime, strict=False),
+                    pl.col("BaseDateTime").str.to_datetime(strict=False),
+                ]
+            ).alias("ts")
+        )
+        schema_names.add("ts")
+    if "ts" in schema_names:
+        lf = lf.with_columns(pl.col("ts").cast(pl.Datetime, strict=False).dt.timestamp("ms").alias("ts"))
+    if "MMSI" in schema_names:
+        lf = lf.with_columns(pl.col("MMSI").cast(pl.Int64, strict=False).alias("MMSI"))
+        if mmsi_list:
+            lf = lf.filter(pl.col("MMSI").is_in(mmsi_list))
+    if {"MMSI", "ts"}.issubset(schema_names):
+        lf = lf.sort(["MMSI", "ts"])
+    elif "ts" in schema_names:
+        lf = lf.sort("ts")
 
     offset = 0
     while True:

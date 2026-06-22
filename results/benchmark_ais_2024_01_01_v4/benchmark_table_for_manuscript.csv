@@ -1,0 +1,6 @@
+task,engine,input_size_mb,rows,unique_mmsi,n_runs,n_ok,n_failed,runtime_s_median,runtime_s_mean,runtime_s_sd,peak_rss_mb_median,peak_rss_mb_mean,peak_rss_mb_sd,output_size_mb_median,output_rows_median,status
+csv_scan_filter_to_parquet,AIStk/Polars lazy,712.81,7293408,14857,3,3,0,0.595,0.602,0.029,5148.53,4293.83,2497.41,187.57,7293408,ok
+csv_scan_filter_to_parquet,Pandas baseline,712.81,7293408,14857,3,3,0,7.569,10.97,5.925,5776.02,5476.37,723.69,221.96,7293408,ok
+csv_scan_filter_to_parquet,Raw Polars lazy,712.81,7293408,14857,3,3,0,0.612,0.615,0.006,5466.52,4623.05,2008.04,184.47,7293408,ok
+event_detection_per_mmsi,AIStk/Polars + vessel-wise events,712.81,7293408,14857,3,3,0,12.029,11.986,0.086,5438.17,4789.0,2030.42,6.95,1090868,ok
+trajectory_stats_per_mmsi,AIStk/Polars streaming,712.81,7293408,14857,3,3,0,3.938,3.949,0.033,5323.91,4413.4,2529.61,0.34,14857,ok

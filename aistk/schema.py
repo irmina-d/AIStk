@@ -32,6 +32,10 @@ ALIASES: Dict[str, str] = {
     "Latitude": "LAT",
     "Speed": "SOG",
     "Course": "COG",
+    "transceiver": "TransceiverClass",
+    "Transceiver": "TransceiverClass",
+    "transceiver_class": "TransceiverClass",
+    "transceiver class": "TransceiverClass",
 }
 
 

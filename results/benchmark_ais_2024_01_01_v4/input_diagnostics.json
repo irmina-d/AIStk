@@ -1,0 +1,45 @@
+[
+  {
+    "file": "data/raw/ais-2024-01-01.csv",
+    "size_mb": 712.81,
+    "separator": ",",
+    "columns": [
+      "mmsi",
+      "base_date_time",
+      "longitude",
+      "latitude",
+      "sog",
+      "cog",
+      "heading",
+      "vessel_name",
+      "imo",
+      "call_sign",
+      "vessel_type",
+      "status",
+      "length",
+      "width",
+      "draft",
+      "cargo",
+      "transceiver"
+    ],
+    "normalized_columns": [
+      "MMSI",
+      "BaseDateTime",
+      "LON",
+      "LAT",
+      "SOG",
+      "COG",
+      "Heading",
+      "VesselName",
+      "IMO",
+      "CallSign",
+      "VesselType",
+      "Status",
+      "Length",
+      "Width",
+      "Draft",
+      "Cargo",
+      "TransceiverClass"
+    ]
+  }
+]
