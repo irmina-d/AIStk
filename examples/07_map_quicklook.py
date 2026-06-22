@@ -1,12 +1,16 @@
-"""
-Quick Folium map preview for a selected MMSI.
-"""
-from aistk.core import AISDataset
+"""Quick Folium map preview for a selected MMSI using sample data."""
 
-def main():
-    ds = AISDataset("data/ais").filter(mmsi=[244660000]).between("2024-01-03","2024-01-05")
-    html = ds.plot_map("out/track.html")
+from pathlib import Path
+
+from aistk import AISDataset
+
+
+def main() -> None:
+    Path("out").mkdir(exist_ok=True)
+    ds = AISDataset("data/sample", pattern="ais_sample.csv").filter(mmsi=[123456789])
+    html = ds.plot_map("out/sample_track.html", mmsi=123456789)
     print("Saved:", html)
+
 
 if __name__ == "__main__":
     main()

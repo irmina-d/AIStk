@@ -98,7 +98,7 @@ def scan(
 
             # Show summary stats to console
             stats_df = compute_stats_lazy(lf, level="mmsi").collect(engine="streaming")
-            typer.echo(stats_df.head().to_string())
+            typer.echo(str(stats_df.head()))
             return
 
         # classic path
@@ -213,7 +213,7 @@ def stats(
                 df.write_parquet(out)
             typer.echo(f"Wrote stats to {out}")
         else:
-            typer.echo(df.head().to_string())
+            typer.echo(str(df.head()))
         return
 
     if engine == "polars-stream":
@@ -237,7 +237,7 @@ def stats(
                 out_df.write_parquet(out)
             typer.echo(f"Wrote stats to {out}")
         else:
-            typer.echo(out_df.head().to_string())
+            typer.echo(str(out_df.head()))
         return
 
     if engine == "dask":
@@ -267,7 +267,7 @@ def stats(
                     pd.DataFrame(res).to_parquet(out, index=False)
             typer.echo(f"Wrote stats to {out}")
         else:
-            typer.echo(res.head().to_string())
+            typer.echo(str(res.head()))
         return
 
     if engine == "spark":
@@ -310,7 +310,12 @@ def events(
     turn_deg: float = typer.Option(30.0, help="Sharp turn threshold (deg)."),
     stop_sog: float = typer.Option(0.5, help="Stop SOG threshold (knots)."),
     stop_min: int = typer.Option(15, help="Stop minimum duration (minutes)."),
-    draft_jump_m: float = typer.Option(0.3, help="Draft change threshold (m)."),
+    draft_jump_m: float = typer.Option(0.3, help="Draft change threshold (m). Interpreted as a low-confidence data-quality/cargo-state indicator."),
+    include_draft_events: bool = typer.Option(
+        True,
+        "--include-draft-events/--skip-draft-events",
+        help="Report draft_change events. Disable when AIS draught values are missing, outdated, or unreliable.",
+    ),
     gap_s: int = typer.Option(600, help="AIS signal gap threshold (seconds)."),
     out: Optional[str] = typer.Option(None, help="Write events to this Parquet/CSV."),
 ) -> None:
@@ -339,6 +344,7 @@ def events(
         stop_min=stop_min,
         draft_jump_m=draft_jump_m,
         gap_s=gap_s,
+        include_draft_changes=include_draft_events,
     )
     if out:
         Path(out).parent.mkdir(parents=True, exist_ok=True)
@@ -348,7 +354,7 @@ def events(
             ev.write_parquet(out)
         typer.echo(f"Wrote events to {out}")
     else:
-        typer.echo(ev.head().to_string())
+        typer.echo(str(ev.head()))
 
 
 # ---------------------------------------------------------------------

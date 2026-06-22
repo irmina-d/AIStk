@@ -78,6 +78,7 @@ def _detect_events_single_vessel(
     stop_min: int,
     draft_jump_m: float,
     gap_s: int,
+    include_draft_changes: bool = True,
 ) -> list[Dict[str, Any]]:
     """Detect events within one already-sorted vessel trajectory."""
     events: list[Dict[str, Any]] = []
@@ -125,8 +126,13 @@ def _detect_events_single_vessel(
                         )
 
     # Draught changes: consecutive differences in this vessel only.
-    if "Draft" in df.columns and df.height >= 2:
-        draft = _series_to_float_numpy(df["Draft"].fill_null(strategy="forward"))
+    # AIS draught is often manually entered, missing, outdated, or updated
+    # irregularly. Therefore, draft_change events should be interpreted as
+    # low-confidence data-quality/cargo-state indicators rather than direct
+    # behavioural anomalies. Missing values are not forward-filled here; only
+    # directly consecutive finite draught observations can produce an event.
+    if include_draft_changes and "Draft" in df.columns and df.height >= 2:
+        draft = _series_to_float_numpy(df["Draft"])
         diff = np.abs(np.diff(draft))
         for i, val in enumerate(diff):
             if np.isfinite(val) and val >= draft_jump_m:
@@ -150,6 +156,7 @@ def detect_events_df(
     draft_jump_m: float = 0.3,
     gap_s: int = 600,
     group_col: str = "MMSI",
+    include_draft_changes: bool = True,
 ) -> pl.DataFrame:
     """
     Detect navigational AIS events from a Polars DataFrame.
@@ -160,6 +167,12 @@ def detect_events_df(
         ``stop_min`` minutes;
       - ``draft_change``: absolute draught change above ``draft_jump_m``;
       - ``gap``: temporal gap between consecutive timestamps above ``gap_s``.
+
+    Draught-change events should be interpreted cautiously. AIS draught values
+    may be missing, manually entered, outdated, or updated irregularly. AIStk
+    therefore treats ``draft_change`` as a low-confidence data-quality or
+    cargo-state indicator rather than a direct behavioural anomaly. Missing
+    draught values are not imputed during event detection.
 
     The detector is vessel-aware. When ``MMSI`` is present, all consecutive
     differences are computed independently per vessel. This prevents false events
@@ -183,6 +196,9 @@ def detect_events_df(
         AIS signal gap threshold in seconds.
     group_col : str, default="MMSI"
         Vessel identifier column used for independent trajectory processing.
+    include_draft_changes : bool, default=True
+        Whether to report ``draft_change`` events. Set to ``False`` when draught
+        is incomplete or not reliable for the intended analysis.
 
     Returns
     -------
@@ -222,6 +238,7 @@ def detect_events_df(
                     stop_min=stop_min,
                     draft_jump_m=draft_jump_m,
                     gap_s=gap_s,
+                    include_draft_changes=include_draft_changes,
                 )
             )
     else:
@@ -234,6 +251,7 @@ def detect_events_df(
                 stop_min=stop_min,
                 draft_jump_m=draft_jump_m,
                 gap_s=gap_s,
+                include_draft_changes=include_draft_changes,
             )
         )
 

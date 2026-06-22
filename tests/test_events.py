@@ -86,3 +86,33 @@ def test_detect_events_df_mixed_event_schema_allows_float_draft_delta():
     assert ev.schema["delta_m"] == pl.Float64
     assert ev.filter((pl.col("type") == "draft_change") & (pl.col("delta_m") == 4.8)).height == 1
     assert {"sharp_turn", "stop", "gap", "draft_change"}.issubset(set(ev["type"].to_list()))
+
+
+def test_draft_change_can_be_disabled():
+    df = pl.DataFrame(
+        {
+            "MMSI": [1, 1],
+            "ts": ["2024-01-01T00:00:00", "2024-01-01T00:10:00"],
+            "Draft": [5.0, 6.0],
+        }
+    ).with_columns(pl.col("ts").str.to_datetime(strict=False))
+
+    ev = detect_events_df(df, draft_jump_m=0.3, include_draft_changes=False)
+    assert "draft_change" not in set(ev["type"].to_list()) if ev.height else True
+
+
+def test_draft_missing_values_are_not_imputed_for_detection():
+    df = pl.DataFrame(
+        {
+            "MMSI": [1, 1, 1],
+            "ts": [
+                "2024-01-01T00:00:00",
+                "2024-01-01T00:10:00",
+                "2024-01-01T00:20:00",
+            ],
+            "Draft": [5.0, None, 6.0],
+        }
+    ).with_columns(pl.col("ts").str.to_datetime(strict=False))
+
+    ev = detect_events_df(df, draft_jump_m=0.3)
+    assert ev.filter(pl.col("type") == "draft_change").height == 0

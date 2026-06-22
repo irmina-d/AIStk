@@ -1,20 +1,27 @@
-# 01_quickstart.py
-# Minimal end-to-end: load CSV, filter by date/MMSI, collect, print head.
+"""Runnable quickstart using the bundled sample AIS CSV file."""
 
 from aistk import AISDataset
 
-def main():
-    # For demo purposes we reuse the tiny CSV from tests/data
-    data_root = "tests/data"           # change to your AIS directory
-    pattern = "mini_ais.csv"           # e.g., "AIS_2024_*.csv" in production
 
-    ds = (AISDataset(data_root, pattern=pattern)
-          .with_columns(["MMSI","BaseDateTime","LAT","LON","SOG","COG","Draft"])
-          .between("2024-01-01","2024-01-02")
-          .filter(mmsi=123))
+def main() -> None:
+    ds = (
+        AISDataset("data/sample", pattern="ais_sample.csv")
+        .with_columns(["MMSI", "BaseDateTime", "LAT", "LON", "SOG", "COG", "Draft"])
+        .between("2024-01-01", "2024-01-02")
+    )
 
     df = ds.collect()
+    stats = ds.stats()
+    events = ds.detect_events()
+
+    print("Rows:", df.height)
+    print("Data preview:")
     print(df.head())
+    print("\nTrajectory statistics:")
+    print(stats)
+    print("\nDetected events:")
+    print(events)
+
 
 if __name__ == "__main__":
     main()

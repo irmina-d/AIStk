@@ -589,6 +589,7 @@ class AISDataset:
         stop_sog: float = 0.5,
         stop_min: int = 15,
         draft_jump_m: float = 0.3,
+        include_draft_changes: bool = True,
     ) -> pl.DataFrame:
         """
         Detect navigational events for the dataset.
@@ -602,7 +603,12 @@ class AISDataset:
         stop_min : int, default=15
             Minimum stop duration (minutes).
         draft_jump_m : float, default=0.3
-            Draught change threshold (meters).
+            Draught change threshold (meters). Draught changes should be treated
+            as low-confidence data-quality/cargo-state indicators because AIS
+            draught values may be missing, outdated, or irregularly updated.
+        include_draft_changes : bool, default=True
+            Whether to report draft_change events. Set to False when draught is
+            not reliable for the intended analysis.
 
         Returns
         -------
@@ -616,6 +622,7 @@ class AISDataset:
             stop_sog=stop_sog,
             stop_min=stop_min,
             draft_jump_m=draft_jump_m,
+            include_draft_changes=include_draft_changes,
         )
 
     # -----------------------

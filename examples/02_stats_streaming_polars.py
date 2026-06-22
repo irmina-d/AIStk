@@ -1,15 +1,13 @@
-"""
-Streaming-friendly stats with Polars LazyFrame to handle large files efficiently.
-"""
-import polars as pl
-from aistk.core import AISDataset
-from aistk.stats_streaming import compute_stats_lazy
+"""Streaming-friendly trajectory statistics with Polars LazyFrame."""
 
-def main():
-    ds = AISDataset("data/ais")  # pattern defaults to *.csv
-    lf = ds._build()
-    res = compute_stats_lazy(lf, level="mmsi").collect(engine="streaming")
-    print(res.sort("distance_km", descending=True).head())
+from aistk import AISDataset
+
+
+def main() -> None:
+    ds = AISDataset("data/sample", pattern="ais_sample.csv").between("2024-01-01", "2024-01-02")
+    res = ds.stats(level="mmsi")
+    print(res.sort("distance_km", descending=True))
+
 
 if __name__ == "__main__":
     main()

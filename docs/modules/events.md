@@ -1,30 +1,47 @@
-# events.py — Event Detection (Turns, Stops, Gaps, Draft Changes)
+# events.py — Event Detection
 
 ## Purpose
-Detects domain-relevant events from sequences of AIS points to support safety/risk analysis.
 
-## Responsibilities
-- Identify sharp turns, prolonged stops/anchorage, signal gaps, and draught changes.
-- Emit event-level tables with timestamps, positions, and derived measures.
-- Allow thresholds configuration (e.g., min speed for 'stop').
+Detect selected event indicators from AIS point sequences to support exploratory maritime data preparation and quality assessment.
 
-## Interactions with Other Modules
-- stats.py (rate/variance signals)
-- schema.py (column names)
-- spatial.py (geofencing during events)
+Implemented indicators:
 
-## Usage Example
+- `sharp_turn` — wrapped change in course over ground above a configurable threshold;
+- `stop` — speed over ground below a configurable threshold for a minimum duration;
+- `gap` — temporal gap between consecutive AIS messages;
+- `draft_change` — change in AIS draught above a configurable threshold.
+
+## Vessel-wise processing
+
+When the `MMSI` column is present, event detection is performed independently for each vessel. This avoids false events caused by comparing the last record of one vessel with the first record of another vessel in large multi-vessel AIS dumps.
+
+## Draught caution
+
+AIS draught values are often manually entered, missing, outdated, or updated irregularly. For this reason, `draft_change` should be interpreted as a low-confidence data-quality or cargo-state indicator rather than a direct behavioural anomaly. Missing draught values are not imputed during batch event detection. If draught reliability is uncertain, disable this indicator:
+
 ```python
-from aisdataset.events import detect_events
+from aistk.events import detect_events_df
 
-events = detect_events(df, min_stop_minutes=15, turn_threshold_deg=30)
+events = detect_events_df(df, include_draft_changes=False)
 ```
 
-## Public API (Outline)
-**Functions**
-- `detect_events_df(df, turn_deg=..., stop_sog=..., stop_min=..., draft_jump_m=...)`
+or from the CLI:
 
-## Notes & Design Considerations
-- Assumes canonical AIS columns after `schema.validate_columns()`.
-- Keep I/O and analytics separated for testability.
-- Prefer vectorized operations; avoid per-row Python loops where possible.
+```bash
+aistk events data/sample --pattern ais_sample.csv --skip-draft-events
+```
+
+## Public API
+
+```python
+detect_events_df(
+    df,
+    turn_deg=30.0,
+    stop_sog=0.5,
+    stop_min=15,
+    draft_jump_m=0.3,
+    gap_s=600,
+    group_col="MMSI",
+    include_draft_changes=True,
+)
+```

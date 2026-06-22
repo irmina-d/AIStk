@@ -21,24 +21,82 @@ pip install aistk
 ```
 
 ## Quickstart
+
+The first example is directly runnable from a fresh clone because the repository
+ships a tiny AIS sample file at `data/sample/ais_sample.csv`. It demonstrates
+the same workflow used on larger AIS files: load, normalize timestamps, filter,
+compute trajectory statistics, and detect events.
+
 ```python
 from aistk import AISDataset
 
-ds = (AISDataset("data/ais/2024", pattern="AIS_2024_*.csv")
-      .with_columns(["MMSI","BaseDateTime","LAT","LON","SOG","COG","Draft"])
-      .between("2024-01-01","2024-12-31")
-      .filter(mmsi=338075892))
+ds = (
+    AISDataset("data/sample", pattern="ais_sample.csv")
+    .with_columns(["MMSI", "BaseDateTime", "LAT", "LON", "SOG", "COG", "Draft"])
+    .between("2024-01-01", "2024-01-02")
+)
 
 df = ds.collect()
-stats = ds.stats()                # Polars DataFrame with metrics per MMSI
-events = ds.detect_events()       # Detected events
-ds.plot_map("track.html")         # Save interactive map to HTML
+stats = ds.stats()
+events = ds.detect_events()
+
+print(df.head())
+print(stats)
+print(events)
 ```
 
-## CLI
+Run the corresponding script:
+
 ```bash
-aistk scan --root ./AIS/2024 --pattern "AIS_2024_*.csv"                --from 2024-01-01 --to 2024-12-31                --mmsi 338075892                --cols MMSI,BaseDateTime,LAT,LON,SOG,COG,Draft                --to-parquet out/ais.parquet --html out/track.html
+python examples/01_quickstart.py
 ```
+
+## CLI quickstart
+
+The same bundled sample data can be used to check the command-line interface:
+
+```bash
+aistk scan data/sample \
+  --pattern "ais_sample.csv" \
+  --from 2024-01-01 \
+  --to 2024-01-02 \
+  --cols MMSI,BaseDateTime,LAT,LON,SOG,COG,Draft \
+  --to-parquet out/sample.parquet \
+  --no-sort-output
+
+aistk stats data/sample \
+  --pattern "ais_sample.csv" \
+  --from 2024-01-01 \
+  --to 2024-01-02 \
+  --engine polars-stream \
+  --out out/sample_stats.parquet
+
+aistk events data/sample \
+  --pattern "ais_sample.csv" \
+  --from 2024-01-01 \
+  --to 2024-01-02 \
+  --out out/sample_events.parquet
+```
+
+These commands are also covered by the test suite to ensure that the documented
+quick-start workflow remains executable.
+
+## AIS data-quality notes
+
+AIS data are noisy and should not be interpreted as perfectly observed vessel
+trajectories. AIStk currently applies basic coordinate validation by retaining
+records with latitude values between -90 and 90 degrees and longitude values
+between -180 and 180 degrees. Advanced trajectory-based outlier detection,
+map-matching and reconstruction are outside the current MVP scope and are planned
+for future releases.
+
+Draught variation should also be interpreted cautiously. AIS draught values may
+be missing, outdated, manually entered, or updated irregularly. Therefore,
+`draft_change` events in AIStk should be treated as low-confidence data-quality
+or cargo-state indicators rather than direct behavioural anomalies. The detector
+does not impute missing draught values, and draft-change reporting can be disabled
+from the CLI with `--skip-draft-events` or from Python by passing
+`include_draft_changes=False` to `detect_events_df`.
 
 ## Project layout
 ```
